@@ -1,0 +1,123 @@
+---
+- name: Install wget
+  ansible.builtin.dnf:
+    name: wget
+    state: present
+
+- name: Download Ansible Semaphore RPM package
+  ansible.builtin.get_url:
+    url: https://github.com/ansible-semaphore/semaphore/releases/download/v2.8.77/semaphore_2.8.77_linux_amd64.rpm
+    dest: /tmp/semaphore_2.8.77_linux_amd64.rpm
+
+- name: Install Ansible Semaphore RPM package
+  ansible.builtin.dnf:
+    name: /tmp/semaphore_2.8.77_linux_amd64.rpm
+    state: present
+
+- name: Create semaphore user
+  ansible.builtin.user:
+    name: semaphore
+    home: /opt/semaphore
+    create_home: yes
+
+- name: Run semaphore setup to configure the database
+  ansible.builtin.command:
+    cmd: "/opt/semaphore/semaphore setup"
+  register: setup_output
+  ignore_errors: yes
+
+- name: Configure PostgreSQL settings for Semaphore
+  ansible.builtin.lineinfile:
+    path: /opt/semaphore/config.json
+    regexp: '"db": {'
+    line: |
+      "db": {
+        "hostname": "127.0.0.1:5432",
+        "user": "semaphore",
+        "password": "semaphorepass",
+        "dbname": "semaphoredb"
+      }
+  notify:
+    - Restart semaphore
+
+- name: Set up web root URL and other configurations
+  ansible.builtin.lineinfile:
+    path: /opt/semaphore/config.json
+    regexp: '"webroot": "default"'
+    line: '"webroot": "/opt/semaphore"'
+
+- name: Set up email alerts
+  ansible.builtin.lineinfile:
+    path: /opt/semaphore/config.json
+    regexp: '"email_alerts": false'
+    line: '"email_alerts": true'
+
+- name: Set up Telegram alerts
+  ansible.builtin.lineinfile:
+    path: /opt/semaphore/config.json
+    regexp: '"telegram_alerts": false'
+    line: '"telegram_alerts": true'
+
+- name: Set up Slack alerts
+  ansible.builtin.lineinfile:
+    path: /opt/semaphore/config.json
+    regexp: '"slack_alerts": false'
+    line: '"slack_alerts": true'
+
+- name: Set up LDAP authentication
+  ansible.builtin.lineinfile:
+    path: /opt/semaphore/config.json
+    regexp: '"ldap_authentication": false'
+    line: '"ldap_authentication": true'
+
+- name: Set up admin user
+  ansible.builtin.lineinfile:
+    path: /opt/semaphore/config.json
+    regexp: '"admin_user": {'
+    line: |
+      "admin_user": {
+        "username": "admin",
+        "email": "admin@itdraft.ru",
+        "name": "Admin",
+        "password": "admin"
+      }
+  notify:
+    - Restart semaphore
+
+- name: Create systemd directory for semaphore service file
+  ansible.builtin.file:
+    path: "/etc/systemd/system"
+    state: directory
+    mode: '0755'
+
+- name: Create systemd service file for Semaphore
+  ansible.builtin.template:
+    src: semaphore.service.j2
+    dest: /etc/systemd/system/semaphore.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Create /etc/semaphore directory
+  ansible.builtin.file:
+    path: /etc/semaphore
+    state: directory
+    owner: semaphore
+    group: semaphore
+    mode: '0755'
+
+- name: Create symbolic link for config.json
+  ansible.builtin.file:
+    src: /opt/semaphore/config.json
+    dest: /etc/semaphore/config.json
+    state: link
+
+- name: Reload systemd to recognize Semaphore service
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Enable and start semaphore service
+  ansible.builtin.systemd:
+    name: semaphore
+    state: started
+    enabled: yes
