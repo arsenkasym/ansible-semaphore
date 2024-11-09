@@ -1,0 +1,26 @@
+---
+- hosts: "all"
+  become: true
+  roles:
+    - postgresql
+    - git
+    - semaphoire
+    - nginx
+
+  tasks:
+    - name: "Reload nginx"
+      ansible.builtin.service:
+        name: "nginx"
+        state: "reloaded"
+
+    - name: "Add HTTP and HTTPS services to firewall"
+      ansible.builtin.command:
+        cmd: firewall-cmd --permanent --add-service={http,https}
+    
+    - name: "Reload firewall to apply changes"
+      ansible.builtin.command:
+        cmd: firewall-cmd --reload
+
+    - name: "Enable HTTPD to connect to the network"
+      ansible.builtin.command:
+        cmd: setsebool -P httpd_can_network_connect 1
