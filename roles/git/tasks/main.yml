@@ -1,0 +1,5 @@
+---
+- name: Install Git using DNF
+  ansible.builtin.dnf:
+    name: git
+    state: present
